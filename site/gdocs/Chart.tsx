@@ -2,7 +2,7 @@ import React from "react"
 import { useRef } from "react"
 import { useEmbedChart } from "../hooks.js"
 import { EnrichedBlockChart } from "@ourworldindata/utils"
-import { renderSpans } from "./utils"
+import { renderSpans } from "./utils.js"
 import cx from "classnames"
 
 export default function Chart({
