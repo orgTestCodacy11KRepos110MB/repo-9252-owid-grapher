@@ -1,7 +1,14 @@
 #! /usr/bin/env jest
 
 import { FontFamily } from "@ourworldindata/utils"
-import { IRText, MarkdownTextWrap, getLineWidth } from "./MarkdownTextWrap"
+import {
+    IRText,
+    MarkdownTextWrap,
+    getLineWidth,
+    recursiveMergeTextTokens,
+    IRWhitespace,
+    IRBold,
+} from "./MarkdownTextWrap"
 
 describe("MarkdownTextWrap", () => {
     it("heavier fontWeight should be wider than plain IRText", () => {
@@ -79,5 +86,43 @@ describe("MarkdownTextWrap", () => {
         })
 
         expect(element.height).toEqual(40)
+    })
+
+    describe(recursiveMergeTextTokens, () => {
+        it("should merge adjacent text tokens", () => {
+            const tokens = [
+                new IRText("one"),
+                new IRWhitespace(),
+                new IRText("two"),
+            ]
+
+            const merged = recursiveMergeTextTokens(tokens)
+            expect(merged.length).toEqual(1)
+            expect(merged[0].toPlaintext()).toEqual("one two")
+        })
+
+        it("should merge inside complicated tokens", () => {
+            const tokens = [
+                new IRBold([
+                    new IRText("one"),
+                    new IRWhitespace(),
+                    new IRText("two"),
+                ]),
+                new IRText("three"),
+                new IRText("four"),
+            ]
+
+            const merged = recursiveMergeTextTokens(tokens)
+            expect(merged.length).toEqual(2)
+
+            const [boldNode, textNode] = merged as [IRBold, IRText]
+            expect(boldNode).toBeInstanceOf(IRBold)
+            expect(textNode).toBeInstanceOf(IRText)
+
+            expect(boldNode.toPlaintext()).toEqual("one two")
+            expect(textNode.toPlaintext()).toEqual("threefour")
+
+            expect(boldNode.children.length).toEqual(1)
+        })
     })
 })
