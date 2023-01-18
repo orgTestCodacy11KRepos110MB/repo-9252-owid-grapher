@@ -13,6 +13,8 @@ import {
 import { google, Auth, docs_v1 } from "googleapis"
 import { gdocToArchie } from "./gdocToArchie.js"
 import { archieToEnriched } from "./archieToEnriched.js"
+import { owidRawArticleBlockToArchieMLString } from "./rawToArchie.js"
+import { createGdocAndInsertOwidArticleContent } from "./archieToGdoc.js"
 
 @Entity("posts_gdocs")
 export class Gdoc extends BaseEntity implements OwidArticleType {
@@ -46,7 +48,10 @@ export class Gdoc extends BaseEntity implements OwidArticleType {
                     client_id: GDOCS_CLIENT_ID,
                 },
                 // Scopes can be specified either as an array or as a single, space-delimited string.
-                scopes: ["https://www.googleapis.com/auth/documents.readonly"],
+                scopes: [
+                    "https://www.googleapis.com/auth/documents",
+                    "https://www.googleapis.com/auth/drive.file",
+                ],
             })
         }
         return Gdoc.cachedGoogleAuth
@@ -60,6 +65,16 @@ export class Gdoc extends BaseEntity implements OwidArticleType {
             })
         }
         return Gdoc.cachedGoogleClient
+    }
+
+    async createGdocArticleFromArchieMl(
+        article: OwidArticleContent
+    ): Promise<void> {
+        this.id = await createGdocAndInsertOwidArticleContent(article)
+
+        this.content = article
+
+        await this.save()
     }
 
     async getEnrichedArticle(): Promise<void> {
