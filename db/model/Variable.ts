@@ -18,8 +18,6 @@ import {
     OwidVariableId,
     OwidSource,
 } from "@ourworldindata/utils"
-import { CATALOG_PATH } from "../../settings/serverSettings.js"
-import * as util from "util"
 import fetch from "node-fetch"
 
 export interface VariableRow {
@@ -83,16 +81,6 @@ export type Field = keyof VariableRow
 
 export const variableTable = "variables"
 
-const initDuckDB = (): any => {
-    // require on top level could cause segfaults in combination with workerpool
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const duckdb = require("duckdb")
-    const ddb = new duckdb.Database(":memory:")
-    ddb.exec("INSTALL httpfs;")
-    ddb.exec("LOAD httpfs;")
-    return ddb
-}
-
 export function parseVariableRows(
     plainRows: UnparsedVariableRow[]
 ): VariableRow[] {
@@ -100,10 +88,6 @@ export function parseVariableRows(
         row.display = row.display ? JSON.parse(row.display) : undefined
     }
     return plainRows
-}
-
-export function normalizeEntityName(entityName: string): string {
-    return entityName.toLowerCase().trim()
 }
 
 // TODO: we'll want to split this into getVariableData and getVariableMetadata once
@@ -143,14 +127,9 @@ export async function getVariableData(
     const row = await variableQuery
     if (row === undefined) throw new Error(`Variable ${variableId} not found`)
 
-    // use parquet only if CATALOG_PATH env var is set and we have path to catalog in MySQL
-    const parquetDataExists = row.catalogPath && row.shortName && CATALOG_PATH
-
     let results: DataRow[] = []
     if (await getOwidVariableDataPath(variableId)) {
         results = await readValuesFromS3(variableId)
-    } else if (parquetDataExists) {
-        results = await readValuesFromParquet(variableId, row)
     } else {
         results = await readValuesFromMysql(variableId)
     }
@@ -448,66 +427,6 @@ const readValuesFromMysql = async (
     )
 }
 
-export const constructParquetQuery = (row: VariableQueryRow): string => {
-    let shortName
-    let where
-
-    if (row.dimensions) {
-        const dimensions: Dimensions = JSON.parse(row.dimensions)
-        shortName = dimensions.originalShortName
-        where = dimensions.filters
-            .map((filter) => `${filter.name} = '${filter.value}'`)
-            .join(" and ")
-    } else {
-        shortName = row.shortName
-        where = "1 = 1"
-    }
-
-    const uri = `${_.trimEnd(CATALOG_PATH, "/")}/${row.catalogPath!}.parquet`
-
-    // backported variables use entity_id, entity_code and entity_name instead of country
-    // TODO: it might be easier to keep backported variables in the same format as grapher
-    // variables, i.e. with just country
-    if (row.catalogPath!.startsWith("backport/")) {
-        return `
-            select
-                ${shortName} as value,
-                year,
-                entity_name as entityName,
-                entity_code as entityCode,
-                entity_id as entityId
-            from read_parquet('${uri}')
-            where ${shortName} is not null and ${where}
-            order by year asc
-        `
-    } else {
-        return `
-            select
-                ${shortName} as value,
-                year,
-                country as entityName
-            from read_parquet('${uri}')
-            where ${shortName} is not null and ${where}
-            order by year asc
-        `
-    }
-}
-
-export const fetchEntitiesByNames = async (
-    entityNames: string[]
-): Promise<EntityRow[]> => {
-    return db.queryMysql(
-        `
-            SELECT
-                entities.id AS entityId,
-                entities.name AS entityName,
-                entities.code AS entityCode
-            FROM entities WHERE LOWER(name) in (?)
-            `,
-        [_(entityNames).map(normalizeEntityName).uniq().value()]
-    )
-}
-
 export const fetchEntitiesByIds = async (
     entityIds: number[]
 ): Promise<EntityRow[]> => {
@@ -521,55 +440,6 @@ export const fetchEntitiesByIds = async (
             `,
         [_(entityIds).uniq().value()]
     )
-}
-
-export const executeSQL = async (sql: string): Promise<any[]> => {
-    // DuckDB must be initialized in a process, copying DB object from the parent process
-    // gives random segfaults. It is not a problem though, as the initialization is fast (~few ms)
-    const ddb = initDuckDB()
-    const con = ddb.connect()
-    try {
-        return util.promisify(con.all).bind(con)(sql)
-    } catch (error: any) {
-        throw new Error(`${error.message}\n${sql}`)
-    }
-}
-
-export const readValuesFromParquet = async (
-    variableId: OwidVariableId,
-    row: VariableQueryRow
-): Promise<DataRow[]> => {
-    const sql = constructParquetQuery(row)
-
-    const results = await executeSQL(sql)
-
-    if (results.length == 0) {
-        console.warn(`No values found for variable ${variableId}`)
-        return results
-    }
-
-    // backported variables already have entity info
-    if (results[0].entityId) {
-        return results
-    }
-
-    const entityInfo = await fetchEntitiesByNames(_.map(results, "entityName"))
-
-    // merge results with entity info
-    const entityInfoDict = _.keyBy(entityInfo, (e) =>
-        normalizeEntityName(e.entityName)
-    )
-    return results.map((row: any) => {
-        const normEntityName = normalizeEntityName(row.entityName)
-        if (!entityInfoDict[normEntityName]) {
-            throw new Error(
-                `Missing entity ${row.entityName} for variable ${variableId}`
-            )
-        }
-        row.entityId = entityInfoDict[normEntityName].entityId
-        row.entityCode = entityInfoDict[normEntityName].entityCode
-        return row
-    })
 }
 
 interface S3Response {
