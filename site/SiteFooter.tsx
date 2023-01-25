@@ -3,6 +3,7 @@ import { webpackUrl } from "../site/webpackUtils.js"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome/index.js"
 import { faAngleRight } from "@fortawesome/free-solid-svg-icons/faAngleRight"
 import { SiteFooterContext } from "@ourworldindata/utils"
+import { viteAssets } from "./viteUtils.js"
 
 interface SiteFooterProps {
     hideDonate?: boolean
@@ -259,23 +260,7 @@ export const SiteFooter = (props: SiteFooterProps) => (
                 </div>
             </div>
             <div className="site-tools" />
-            <script src="https://polyfill.io/v3/polyfill.min.js?features=es6,fetch,URL,IntersectionObserver,IntersectionObserverEntry,ResizeObserver" />
-            {/* https://vitejs.dev/guide/backend-integration.html */}
-            <script
-                type="module"
-                dangerouslySetInnerHTML={{
-                    __html: `import RefreshRuntime from 'http://localhost:8090/@react-refresh'
-  RefreshRuntime.injectIntoGlobalHook(window)
-  window.$RefreshReg$ = () => {}
-  window.$RefreshSig$ = () => (type) => type
-  window.__vite_plugin_react_preamble_installed__ = true`,
-                }}
-            />
-            <script type="module" src="http://localhost:8090/@vite/client" />
-            <script
-                type="module"
-                src="http://localhost:8090/site/owid.entry.ts"
-            />
+            {viteAssets.scripts}
             <script
                 type="module"
                 dangerouslySetInnerHTML={{
