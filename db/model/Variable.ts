@@ -11,7 +11,6 @@ import {
     OwidVariableDimensionValuePartial,
     OwidVariableMixedData,
     OwidVariableWithSourceAndType,
-    arrToCsvRow,
     omitNullableValues,
     DataValueQueryArgs,
     DataValueResult,
@@ -19,6 +18,7 @@ import {
     OwidSource,
 } from "@ourworldindata/utils"
 import fetch from "node-fetch"
+import pl from "nodejs-polars"
 
 export interface VariableRow {
     id: number
@@ -67,13 +67,13 @@ export type VariableQueryRow = Readonly<
     }
 >
 
-interface DataRow {
+interface S3DataRow {
     value: string
     year: number
     entityId: number
-    entityName: string
-    entityCode: string
 }
+
+type DataRow = S3DataRow & { entityName: string; entityCode: string }
 
 export type UnparsedVariableRow = VariableRow & { display: string }
 
@@ -127,12 +127,9 @@ export async function getVariableData(
     const row = await variableQuery
     if (row === undefined) throw new Error(`Variable ${variableId} not found`)
 
-    let results: DataRow[] = []
-    if (await getOwidVariableDataPath(variableId)) {
-        results = await readValuesFromS3(variableId)
-    } else {
-        results = await readValuesFromMysql(variableId)
-    }
+    const results: DataRow[] = await joinEntityInfo(
+        await readValuesFromS3(variableId)
+    )
 
     const {
         sourceId,
@@ -234,87 +231,47 @@ export async function getDataForMultipleVariables(
     return allVariablesDataAndMetadataMap
 }
 
-// TODO use this in Dataset.writeCSV() maybe?
 export async function writeVariableCSV(
     variableIds: number[],
     stream: Writable
 ): Promise<void> {
-    const variableQuery: Promise<{ id: number; name: string }[]> =
-        db.queryMysql(
+    // get variables as dataframe
+    const variablesDF = (
+        await readSQLasDF(
             `
-            SELECT id, name
-            FROM variables
-            WHERE id IN (?)
-            `,
+        SELECT
+            id as variableId,
+            name as variableName,
+            columnOrder
+        FROM variables v
+        WHERE id IN (?)`,
             [variableIds]
         )
-
-    const dataQuery: Promise<
-        {
-            variableId: number
-            entity: string
-            year: number
-            value: string
-        }[]
-    > = db.queryMysql(
-        `
-        SELECT
-            data_values.variableId AS variableId,
-            entities.name AS entity,
-            data_values.year AS year,
-            data_values.value AS value
-        FROM
-            data_values
-            JOIN entities ON entities.id = data_values.entityId
-            JOIN variables ON variables.id = data_values.variableId
-        WHERE
-            data_values.variableId IN (?)
-        ORDER BY
-            data_values.entityId ASC,
-            data_values.year ASC
-        `,
-        [variableIds]
-    )
-
-    let variables = await variableQuery
-    const variablesById = lodash.keyBy(variables, "id")
+    ).withColumn(pl.col("variableId").cast(pl.Int32))
 
     // Throw an error if not all variables exist
-    if (variables.length !== variableIds.length) {
-        const fetchedVariableIds = variables.map((v) => v.id)
-        const missingVariables = lodash.difference(
-            variableIds,
-            fetchedVariableIds
-        )
+    if (variablesDF.shape.height !== variableIds.length) {
+        const fetchedVariableIds = variablesDF.getColumn("variableId").toArray()
+        const missingVariables = _.difference(variableIds, fetchedVariableIds)
         throw Error(`Variable IDs do not exist: ${missingVariables.join(", ")}`)
     }
 
-    variables = variableIds.map((variableId) => variablesById[variableId])
+    // get data values as dataframe
+    const dataValuesDF = await dataAsDF(
+        variablesDF.getColumn("variableId").toArray()
+    )
 
-    const columns = ["Entity", "Year"].concat(variables.map((v) => v.name))
-    stream.write(arrToCsvRow(columns))
-
-    const variableColumnIndex: { [id: number]: number } = {}
-    for (const variable of variables) {
-        variableColumnIndex[variable.id] = columns.indexOf(variable.name)
-    }
-
-    const data = await dataQuery
-
-    let row: unknown[] = []
-    for (const datum of data) {
-        if (datum.entity !== row[0] || datum.year !== row[1]) {
-            // New row
-            if (row.length) {
-                stream.write(arrToCsvRow(row))
-            }
-            row = [datum.entity, datum.year]
-            for (const _ of variables) {
-                row.push("")
-            }
-        }
-        row[variableColumnIndex[datum.variableId]] = datum.value
-    }
+    dataValuesDF
+        .join(variablesDF, { on: "variableId" })
+        .sort(["columnOrder", "variableId"])
+        // variables as columns
+        .pivot("value", {
+            index: ["entityName", "year"],
+            columns: "variableName",
+        })
+        .sort(["entityName", "year"])
+        .rename({ entityName: "Entity", year: "Year" })
+        .writeCSV(stream)
 }
 
 export const getDataValue = async ({
@@ -406,27 +363,6 @@ export const getOwidVariableDataPath = async (
     return row.dataPath
 }
 
-const readValuesFromMysql = async (
-    variableId: OwidVariableId
-): Promise<DataRow[]> => {
-    return db.queryMysql(
-        `
-        SELECT
-            value,
-            year,
-            entities.id AS entityId,
-            entities.name AS entityName,
-            entities.code AS entityCode
-        FROM data_values
-        LEFT JOIN entities ON data_values.entityId = entities.id
-        WHERE data_values.variableId = ?
-        ORDER BY
-            year ASC
-        `,
-        [variableId]
-    )
-}
-
 export const fetchEntitiesByIds = async (
     entityIds: number[]
 ): Promise<EntityRow[]> => {
@@ -448,33 +384,121 @@ interface S3Response {
     values: string[]
 }
 
-export const readValuesFromS3 = async (
+const fetchS3Values = async (
     variableId: OwidVariableId
-): Promise<DataRow[]> => {
+): Promise<S3Response> => {
     const dataPath = await getOwidVariableDataPath(variableId)
     if (!dataPath) {
         throw new Error(`Missing dataPath for variable ${variableId}`)
     }
-    const result = (await (await fetch(dataPath)).json()) as S3Response
+    return (await (await fetch(dataPath)).json()) as S3Response
+}
 
-    // fetch entities info
-    const entities = await fetchEntitiesByIds(result.entities)
+export const readValuesFromS3 = async (
+    variableId: OwidVariableId
+): Promise<S3DataRow[]> => {
+    const result = await fetchS3Values(variableId)
 
-    return _.zip(result.entities, result.years, result.values).map(
+    const rows = _.zip(result.entities, result.years, result.values).map(
         (row: any) => {
-            const entity = entities.find((e) => e.entityId === row[0])
-            if (!entity) {
-                throw new Error(
-                    `Missing entity ${row[0]} for variable ${variableId}`
-                )
-            }
             return {
-                entityId: entity.entityId,
-                entityName: entity.entityName,
-                entityCode: entity.entityCode,
+                entityId: row[0],
                 year: row[1],
                 value: row[2],
-            } as DataRow
+            }
         }
     )
+
+    return rows
+}
+
+export const joinEntityInfo = async <T extends { entityId: number }>(
+    rows: T[]
+): Promise<(T & { entityName: string; entityCode: string })[]> => {
+    // fetch entities info
+    const entities = await fetchEntitiesByIds(rows.map((row) => row.entityId))
+
+    return rows.map((row) => {
+        const entity = entities.find((e) => e.entityId === row.entityId)
+        if (!entity) {
+            throw new Error(`Missing entity ${row.entityId}`)
+        }
+        return {
+            ...row,
+            entityName: entity.entityName,
+            entityCode: entity.entityCode,
+        } as T & { entityName: string; entityCode: string }
+    })
+}
+
+export const joinDataValues = async <T extends { variableId: number }>(
+    variableRows: T[]
+): Promise<(T & S3DataRow)[]> => {
+    // get all variable ids from rows
+    const variableIds = variableRows.map((row) => row.variableId)
+    if (_.uniq(variableIds).length !== variableIds.length) {
+        throw new Error("Duplicate variable ids")
+    }
+
+    // load all corresponding S3 json data files and expand them
+    return _.flatten(
+        await Promise.all(
+            variableRows.map(async (variableRow) => {
+                const rows = await readValuesFromS3(variableRow.variableId)
+                return rows.map((row) => ({
+                    ...row,
+                    ...variableRow,
+                }))
+            })
+        )
+    )
+}
+
+export const dataAsDF = async (
+    variableIds: OwidVariableId[]
+): Promise<pl.DataFrame> => {
+    const dfs = await Promise.all(
+        variableIds.map(async (variableId) => {
+            return pl
+                .DataFrame(await readValuesFromS3(variableId))
+                .select(
+                    pl.col("entityId").cast(pl.Int32),
+                    pl.col("year").cast(pl.Int32),
+                    pl.col("value").cast(pl.Utf8),
+                    pl.lit(variableId).cast(pl.Int32).alias("variableId")
+                )
+        })
+    )
+
+    const df = pl.concat(dfs)
+
+    // move this to its own method
+    const entityDF = (
+        await readSQLasDF(
+            `
+        SELECT
+            id AS entityId,
+            name AS entityName,
+            code AS entityCode
+        FROM entities WHERE id in (?)
+        `,
+            // Series.unique() is raising an error
+            [_.uniq(df.getColumn("entityId").toArray())]
+        )
+    ).select(
+        pl.col("entityId").cast(pl.Int32),
+        pl.col("entityName").cast(pl.Utf8),
+        pl.col("entityCode").cast(pl.Utf8)
+    )
+
+    return df.join(entityDF, { on: "entityId" })
+}
+
+export const readSQLasDF = async (
+    sql: string,
+    params: any[]
+): Promise<pl.DataFrame> => {
+    const rows = await db.queryMysql(sql, params)
+    // convert to plain objects to avoid an error
+    return pl.DataFrame(rows.map((r: any) => ({ ...r })))
 }

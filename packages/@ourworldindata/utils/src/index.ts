@@ -188,7 +188,6 @@ export {
     isTouchDevice,
     Json,
     csvEscape,
-    arrToCsvRow,
     urlToSlug,
     trimObject,
     fetchText,

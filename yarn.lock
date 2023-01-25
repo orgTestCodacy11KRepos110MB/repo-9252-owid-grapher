@@ -15762,6 +15762,7 @@ __metadata:
     mysql: ^2.18.1
     netlify-cli: ^12.0.7
     node-fetch: ^2.6.7
+    nodejs-polars: ^0.7.2
     normalize.css: ^8.0.1
     nx: 15.3.0
     opener: ^1.5.2
@@ -20957,6 +20958,75 @@ __metadata:
     path-exists: ^4.0.0
     semver: ^7.3.2
   checksum: 555f2bc934382d70120c2e1e61b4156c0115cca38eb69d64e2e8214bd7375bea6b65c2c40841df188450eb5e024fc3d8e94555834fc62f13248e4ab0b3a160f2
+  languageName: node
+  linkType: hard
+
+"nodejs-polars-darwin-arm64@npm:0.7.2":
+  version: 0.7.2
+  resolution: "nodejs-polars-darwin-arm64@npm:0.7.2"
+  conditions: os=darwin & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"nodejs-polars-darwin-x64@npm:0.7.2":
+  version: 0.7.2
+  resolution: "nodejs-polars-darwin-x64@npm:0.7.2"
+  conditions: os=darwin & cpu=x64
+  languageName: node
+  linkType: hard
+
+"nodejs-polars-linux-arm64-gnu@npm:0.7.2":
+  version: 0.7.2
+  resolution: "nodejs-polars-linux-arm64-gnu@npm:0.7.2"
+  conditions: os=linux & cpu=arm64 & libc=glibc
+  languageName: node
+  linkType: hard
+
+"nodejs-polars-linux-x64-gnu@npm:0.7.2":
+  version: 0.7.2
+  resolution: "nodejs-polars-linux-x64-gnu@npm:0.7.2"
+  conditions: os=linux & cpu=x64 & libc=glibc
+  languageName: node
+  linkType: hard
+
+"nodejs-polars-win32-ia32-msvc@npm:0.7.2":
+  version: 0.7.2
+  resolution: "nodejs-polars-win32-ia32-msvc@npm:0.7.2"
+  conditions: os=win32 & cpu=ia32
+  languageName: node
+  linkType: hard
+
+"nodejs-polars-win32-x64-msvc@npm:0.7.2":
+  version: 0.7.2
+  resolution: "nodejs-polars-win32-x64-msvc@npm:0.7.2"
+  conditions: os=win32 & cpu=x64
+  languageName: node
+  linkType: hard
+
+"nodejs-polars@npm:^0.7.2":
+  version: 0.7.2
+  resolution: "nodejs-polars@npm:0.7.2"
+  dependencies:
+    nodejs-polars-darwin-arm64: 0.7.2
+    nodejs-polars-darwin-x64: 0.7.2
+    nodejs-polars-linux-arm64-gnu: 0.7.2
+    nodejs-polars-linux-x64-gnu: 0.7.2
+    nodejs-polars-win32-ia32-msvc: 0.7.2
+    nodejs-polars-win32-x64-msvc: 0.7.2
+  dependenciesMeta:
+    nodejs-polars-darwin-arm64:
+      optional: true
+    nodejs-polars-darwin-x64:
+      optional: true
+    nodejs-polars-linux-arm64-gnu:
+      optional: true
+    nodejs-polars-linux-x64-gnu:
+      optional: true
+    nodejs-polars-win32-ia32-msvc:
+      optional: true
+    nodejs-polars-win32-x64-msvc:
+      optional: true
+  checksum: 58aeb77f13119a84a69671ff7b88be933dd27e3df34405a51d02a7d4baf1aa4e87cf7f90eb86da5ad284df84a921a138d7fa7534252df82acf25539d0cff5e68
   languageName: node
   linkType: hard
 
