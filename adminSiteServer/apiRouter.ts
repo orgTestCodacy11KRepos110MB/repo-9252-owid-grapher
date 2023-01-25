@@ -1673,9 +1673,6 @@ apiRouter.delete("/variables/:variableId", async (req: Request) => {
         throw new JsonError(`Cannot delete bulk import variable`, 400)
 
     await db.transaction(async (t) => {
-        await t.execute(`DELETE FROM data_values WHERE variableId=?`, [
-            variableId,
-        ])
         await t.execute(`DELETE FROM variables WHERE id=?`, [variableId])
     })
 
@@ -1927,10 +1924,6 @@ apiRouter.delete(
         if (!dataset) throw new JsonError(`No dataset by id ${datasetId}`, 404)
 
         await db.transaction(async (t) => {
-            await t.execute(
-                `DELETE d FROM data_values AS d JOIN variables AS v ON d.variableId=v.id WHERE v.datasetId=?`,
-                [datasetId]
-            )
             await t.execute(
                 `DELETE d FROM country_latest_data AS d JOIN variables AS v ON d.variable_id=v.id WHERE v.datasetId=?`,
                 [datasetId]
@@ -2323,6 +2316,9 @@ interface ImportPostData {
 }
 
 apiRouter.post("/importDataset", async (req: Request, res: Response) => {
+    // NOTE: we cannot use this endpoint anymore, since we have removed data_values table
+    throw new JsonError(`Import CSV has been replaced by Fast-track`)
+
     const userId = res.locals.user.id
     const { dataset, entities, years, variables } = req.body as ImportPostData
 

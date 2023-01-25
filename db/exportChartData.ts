@@ -40,6 +40,7 @@ const dataExport = async (): Promise<void> => {
 
     let count = 0
     for (const chunk of lodash.chunk(variableIds, 100)) {
+        // we don't have data_values anymore, but is this still useful?
         await execWrapper(
             `mysqldump --default-character-set=utf8mb4 --no-tablespaces --no-create-info -u '${GRAPHER_DB_USER}' -h '${GRAPHER_DB_HOST}' -P ${GRAPHER_DB_PORT} ${GRAPHER_DB_NAME} data_values --where="variableId IN (${chunk.join(
                 ","

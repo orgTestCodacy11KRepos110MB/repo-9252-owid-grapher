@@ -49,7 +49,7 @@ const countryIndicatorGraphers = async (): Promise<GrapherInterface[]> =>
         return graphers.filter(checkShouldShowIndicator)
     })
 
-const countryIndicatorVariables = async (): Promise<VariableRow[]> =>
+export const countryIndicatorVariables = async (): Promise<VariableRow[]> =>
     bakeCache(countryIndicatorVariables, async () => {
         const variableIds = (await countryIndicatorGraphers()).map(
             (c) => c.dimensions![0]!.variableId
@@ -77,6 +77,10 @@ export const denormalizeLatestCountryData = async (variableIds?: number[]) => {
 
     const currentYear = new Date().getUTCFullYear()
 
+    // TODO: this will require custom logic for fetching from S3 json files
+    // there are about 1500 variableIds and we'd have to iterate over them all
+    // it'd be probably better to build `country_latest_data` as a separate script
+    // or do it in ETL when pushing to grapher
     const dataValuesQuery = db
         .knexTable("data_values")
         .select("variableId", "entityId", "value", "year")
