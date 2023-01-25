@@ -260,7 +260,7 @@ export const SiteFooter = (props: SiteFooterProps) => (
                 </div>
             </div>
             <div className="site-tools" />
-            {viteAssets.scripts}
+            {viteAssets("site/owid.entry.ts").scripts}
             <script
                 type="module"
                 dangerouslySetInnerHTML={{
