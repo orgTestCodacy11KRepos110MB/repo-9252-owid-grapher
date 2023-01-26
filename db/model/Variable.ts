@@ -1,7 +1,7 @@
-import * as lodash from "lodash"
-import _, { reverse } from "lodash"
+import _ from "lodash"
 import { Writable } from "stream"
 import * as db from "../db.js"
+import https from "https"
 import {
     OwidChartDimensionInterface,
     OwidVariableDisplayConfigInterface,
@@ -366,6 +366,12 @@ interface S3Response {
     values: string[]
 }
 
+// limit number of concurrent requests to 50 when fetching values from S3
+const httpsAgent = new https.Agent({
+    keepAlive: true,
+    maxSockets: 50,
+})
+
 const fetchS3Values = async (
     variableId: OwidVariableId
 ): Promise<S3Response> => {
@@ -373,7 +379,9 @@ const fetchS3Values = async (
     if (!dataPath) {
         throw new Error(`Missing dataPath for variable ${variableId}`)
     }
-    return (await (await fetch(dataPath)).json()) as S3Response
+    return (await (
+        await fetch(dataPath, { agent: httpsAgent })
+    ).json()) as S3Response
 }
 
 export const readValuesFromS3 = async (
@@ -481,6 +489,12 @@ export const readSQLasDF = async (
     params: any[]
 ): Promise<pl.DataFrame> => {
     const rows = await db.queryMysql(sql, params)
-    // convert to plain objects to avoid an error
-    return pl.DataFrame(rows.map((r: any) => ({ ...r })))
+
+    // transpose list of objects into object of lists because polars raises
+    // an error when creating a dataframe with null values (see https://github.com/pola-rs/nodejs-polars/issues/20)
+    // otherwise we'd just use pl.DataFrame(rows)
+    const keys = _.keys(rows[0])
+    const values = _.map(keys, (key) => _.map(rows, key))
+
+    return pl.DataFrame(_.zipObject(keys, values))
 }
