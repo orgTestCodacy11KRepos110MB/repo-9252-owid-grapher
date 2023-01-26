@@ -1,5 +1,5 @@
 import * as lodash from "lodash"
-import _ from "lodash"
+import _, { reverse } from "lodash"
 import { Writable } from "stream"
 import * as db from "../db.js"
 import {
@@ -279,40 +279,22 @@ export const getDataValue = async ({
     entityId,
     year,
 }: DataValueQueryArgs): Promise<DataValueResult | undefined> => {
+    // TODO: test this!
     if (!variableId || !entityId) return
 
-    const queryStart = `
-        SELECT
-            value,
-            year,
-            variables.unit AS unit,
-            entities.name AS entityName
-        FROM data_values
-        JOIN entities on entities.id = data_values.entityId
-        JOIN variables on variables.id = data_values.variableId
-        WHERE entities.id = ?
-        AND variables.id = ?`
-
-    const queryStartVariables = [entityId, variableId]
-
-    let row
+    let df = (await dataAsDF([variableId])).filter(
+        pl.col("entityId").eq(entityId)
+    )
 
     if (year) {
-        row = await db.mysqlFirst(
-            `${queryStart}
-            AND data_values.year = ?`,
-            [...queryStartVariables, year]
-        )
+        df = df.filter(pl.col("year").eq(year))
     } else {
-        row = await db.mysqlFirst(
-            `${queryStart}
-            ORDER BY data_values.year DESC
-            LIMIT 1`,
-            queryStartVariables
-        )
+        df = df.sort(["year"], true).limit(1)
     }
 
-    if (!row) return
+    if (df.shape.height == 0) return
+
+    const row = df.toRecords()[0]
 
     return {
         value: Number(row.value),

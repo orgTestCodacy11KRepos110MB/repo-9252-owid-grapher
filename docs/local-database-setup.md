@@ -26,8 +26,6 @@ This script will create a database, then download and import all OWID charts and
 ./db/downloadAndCreateDatabase.sh
 ```
 
-Note that the `data_values` table will be incomplete – it will only contain data used in charts. In production, this table is >20GB (uncompressed) and contains unreviewed and undocumented data, so we currently don't offer a full export of it.
-
 ### Inspecting the database
 
 On macOS, we recommend using [Sequel Ace](https://github.com/Sequel-Ace/Sequel-Ace) (it's free). [DBeaver](https://dbeaver.io/) is also free, works well also and is available on more operating systems.
