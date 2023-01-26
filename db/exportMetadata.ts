@@ -1,4 +1,4 @@
-// Script to export everything in the database except sensitive info and data_values (which is big)
+// Script to export everything in the database except sensitive info
 
 import * as db from "./db.js"
 import * as fs from "fs-extra"

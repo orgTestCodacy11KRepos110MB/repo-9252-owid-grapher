@@ -16,10 +16,9 @@ We do this for convenience so we can run `mysql` commands without providing a pa
 
 Daily exports from the live OWID database are published here and can be used for testing:
 
-| File                                                                            | Description                                                   | Size (compressed) |
-| ------------------------------------------------------------------------------- | ------------------------------------------------------------- | ----------------- |
-| [owid_metadata.sql.gz](https://files.ourworldindata.org/owid_metadata.sql.gz)   | Table structure and metadata, everything except `data_values` | ~15 MB            |
-| [owid_chartdata.sql.gz](https://files.ourworldindata.org/owid_chartdata.sql.gz) | All data values used by published visualizations              | >200MB            |
+| File                                                                          | Description                  | Size (compressed) |
+| ----------------------------------------------------------------------------- | ---------------------------- | ----------------- |
+| [owid_metadata.sql.gz](https://files.ourworldindata.org/owid_metadata.sql.gz) | Table structure and metadata | ~15 MB            |
 
 This script will create a database, then download and import all OWID charts and their data (might take a while!):
 

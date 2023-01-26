@@ -26,7 +26,6 @@ help:
 	@echo '  make up            start dev environment via docker-compose and tmux'
 	@echo '  make down          stop any services still running'
 	@echo '  make refresh       (while up) download a new grapher snapshot and update MySQL'
-	@echo '  make refresh.meta  (while up) refresh grapher metadata only'
 	@echo '  make migrate       (while up) run any outstanding db migrations'
 	@echo '  make test          run full suite of CI checks including unit tests'
 	@echo '  make svgtest       compare current rendering against reference SVGs'
@@ -44,7 +43,7 @@ help:
 
 up: export DEBUG = 'knex:query'
 
-up: require create-if-missing.env tmp-downloads/owid_chartdata.sql.gz
+up: require create-if-missing.env tmp-downloads/owid_metadata.sql.gz
 	@make validate.env
 	@make check-port-3306
 	@echo '==> Building grapher'
@@ -70,7 +69,7 @@ up: require create-if-missing.env tmp-downloads/owid_chartdata.sql.gz
 		set -g mouse on \
 		|| make down
 
-up.devcontainer: create-if-missing.env.devcontainer tmp-downloads/owid_chartdata.sql.gz
+up.devcontainer: create-if-missing.env.devcontainer tmp-downloads/owid_metadata.sql.gz
 	@make validate.env
 	@make check-port-3306
 	@echo '==> Building grapher'
@@ -94,7 +93,7 @@ up.devcontainer: create-if-missing.env.devcontainer tmp-downloads/owid_chartdata
 
 up.full: export DEBUG = 'knex:query'
 
-up.full: require create-if-missing.env.full wordpress/.env tmp-downloads/owid_chartdata.sql.gz tmp-downloads/live_wordpress.sql.gz wordpress/web/app/uploads/2022
+up.full: require create-if-missing.env.full wordpress/.env tmp-downloads/owid_metadata.sql.gz tmp-downloads/live_wordpress.sql.gz wordpress/web/app/uploads/2022
 	@make validate.env.full
 	@make check-port-3306
 
@@ -128,17 +127,10 @@ migrate:
 
 refresh:
 	@echo '==> Downloading chart data'
-	./devTools/docker/download-grapher-mysql.sh
+	./devTools/docker/download-grapher-metadata-mysql.sh
 
 	@echo '==> Updating grapher database'
 	@. ./.env && DATA_FOLDER=tmp-downloads ./devTools/docker/refresh-grapher-data.sh
-
-refresh.meta:
-	@echo '==> Downloading chart metadata'
-	./devTools/docker/download-grapher-metadata-mysql.sh
-	
-	@echo '==> Updating grapher database'
-	@. ./.env && DATA_FOLDER=tmp-downloads SKIP_CHARTDATA=1 ./devTools/docker/refresh-grapher-data.sh
 
 refresh.wp:
 	@echo '==> Downloading wordpress data'
@@ -207,9 +199,9 @@ check-port-3306:
 		\nWe recommend using a different port (like 3307)";\
 	fi
 
-tmp-downloads/owid_chartdata.sql.gz:
-	@echo '==> Downloading chart data'
-	./devTools/docker/download-grapher-mysql.sh
+tmp-downloads/owid_metadata.sql.gz:
+	@echo '==> Downloading metadata'
+	./devTools/docker/download-grapher-metadata-mysql.sh
 
 tmp-downloads/live_wordpress.sql.gz:
 	@echo '==> Downloading wordpress data'
@@ -226,12 +218,12 @@ wordpress/web/app/uploads/2022:
 deploy:
 	@echo '==> Starting from a clean slate...'
 	rm -rf itsJustJavascript
-	
+
 	@echo '==> Building...'
 	yarn
 	yarn lerna run build
 	yarn run tsc -b
-	
+
 	@echo '==> Deploying...'
 	yarn buildAndDeploySite live
 
@@ -239,24 +231,24 @@ stage:
 	@echo '==> Preparing to deploy to $(STAGING)'
 	@echo '==> Starting from a clean slate...'
 	rm -rf itsJustJavascript
-	
+
 	@echo '==> Building...'
 	yarn
 	yarn lerna run build
 	yarn run tsc -b
-	
+
 	@echo '==> Deploying to $(STAGING)...'
 	yarn buildAndDeploySite $(STAGING)
 
-test: 
+test:
 	@echo '==> Linting'
 	yarn
 	yarn run eslint
 	yarn lerna run buildTests
-	
+
 	@echo '==> Checking formatting'
 	yarn testPrettierChanged
-	
+
 	@echo '==> Running tests'
 	yarn run jest --all
 
@@ -280,12 +272,12 @@ unittest:
 
 svgtest: ../owid-grapher-svgs
 	@echo '==> Comparing against reference SVGs'
-	
+
 	@# get ../owid-grapher-svgs reliably to a base state at origin/master
 	cd ../owid-grapher-svgs && git fetch && git checkout -f master && git reset --hard origin/master
-	
+
 	@# generate a full new set of svgs
 	node itsJustJavascript/devTools/svgTester/verify-graphs.js -i ../owid-grapher-svgs/configs -o ../owid-grapher-svgs/svg -r ../owid-grapher-svgs/svg
-	
+
 	@# summarize differences
 	cd ../owid-grapher-svgs && git diff --stat
