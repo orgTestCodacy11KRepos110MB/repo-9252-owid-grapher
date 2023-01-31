@@ -127,7 +127,7 @@ export async function getVariableData(
     const row = await variableQuery
     if (row === undefined) throw new Error(`Variable ${variableId} not found`)
 
-    const results = (await dataAsDF([variableId])).toRecords() as DataRow[]
+    const results = await dataAsRecords([variableId])
 
     const {
         sourceId,
@@ -277,12 +277,21 @@ export const getDataValue = async ({
     entityId,
     year,
 }: DataValueQueryArgs): Promise<DataValueResult | undefined> => {
-    // TODO: test this!
     if (!variableId || !entityId) return
 
     let df = (await dataAsDF([variableId])).filter(
         pl.col("entityId").eq(entityId)
     )
+
+    const unit = (
+        await db.mysqlFirst(
+            `
+        SELECT unit FROM variables
+        WHERE id = ?
+        `,
+            [variableId]
+        )
+    ).unit
 
     if (year) {
         df = df.filter(pl.col("year").eq(year))
@@ -297,7 +306,7 @@ export const getDataValue = async ({
     return {
         value: Number(row.value),
         year: Number(row.year),
-        unit: row.unit,
+        unit: unit,
         entityName: row.entityName,
     }
 }
@@ -422,6 +431,7 @@ export const entitiesAsDF = async (
 export const dataAsDF = async (
     variableIds: OwidVariableId[]
 ): Promise<pl.DataFrame> => {
+    // return data values as a dataframe
     const dfs = await Promise.all(
         variableIds.map(async (variableId) => {
             return pl
@@ -440,6 +450,13 @@ export const dataAsDF = async (
     const entityDF = await entitiesAsDF(df.getColumn("entityId").toArray())
 
     return df.join(entityDF, { on: "entityId" })
+}
+
+export const dataAsRecords = async (
+    variableIds: OwidVariableId[]
+): Promise<DataRow[]> => {
+    // return data values as a list of DataRows
+    return (await dataAsDF(variableIds)).toRecords() as DataRow[]
 }
 
 export const readSQLasDF = async (
