@@ -127,9 +127,7 @@ export async function getVariableData(
     const row = await variableQuery
     if (row === undefined) throw new Error(`Variable ${variableId} not found`)
 
-    const results: DataRow[] = await joinEntityInfo(
-        await readValuesFromS3(variableId)
-    )
+    const results = (await dataAsDF([variableId])).toRecords() as DataRow[]
 
     const {
         sourceId,
@@ -389,7 +387,7 @@ export const readValuesFromS3 = async (
 ): Promise<S3DataRow[]> => {
     const result = await fetchS3Values(variableId)
 
-    const rows = _.zip(result.entities, result.years, result.values).map(
+    return _.zip(result.entities, result.years, result.values).map(
         (row: any) => {
             return {
                 entityId: row[0],
@@ -398,49 +396,26 @@ export const readValuesFromS3 = async (
             }
         }
     )
-
-    return rows
 }
 
-export const joinEntityInfo = async <T extends { entityId: number }>(
-    rows: T[]
-): Promise<(T & { entityName: string; entityCode: string })[]> => {
-    // fetch entities info
-    const entities = await fetchEntitiesByIds(rows.map((row) => row.entityId))
-
-    return rows.map((row) => {
-        const entity = entities.find((e) => e.entityId === row.entityId)
-        if (!entity) {
-            throw new Error(`Missing entity ${row.entityId}`)
-        }
-        return {
-            ...row,
-            entityName: entity.entityName,
-            entityCode: entity.entityCode,
-        } as T & { entityName: string; entityCode: string }
-    })
-}
-
-export const joinDataValues = async <T extends { variableId: number }>(
-    variableRows: T[]
-): Promise<(T & S3DataRow)[]> => {
-    // get all variable ids from rows
-    const variableIds = variableRows.map((row) => row.variableId)
-    if (_.uniq(variableIds).length !== variableIds.length) {
-        throw new Error("Duplicate variable ids")
-    }
-
-    // load all corresponding S3 json data files and expand them
-    return _.flatten(
-        await Promise.all(
-            variableRows.map(async (variableRow) => {
-                const rows = await readValuesFromS3(variableRow.variableId)
-                return rows.map((row) => ({
-                    ...row,
-                    ...variableRow,
-                }))
-            })
+export const entitiesAsDF = async (
+    entityIds: number[]
+): Promise<pl.DataFrame> => {
+    return (
+        await readSQLasDF(
+            `
+        SELECT
+            id AS entityId,
+            name AS entityName,
+            code AS entityCode
+        FROM entities WHERE id in (?)
+        `,
+            [_.uniq(entityIds)]
         )
+    ).select(
+        pl.col("entityId").cast(pl.Int32),
+        pl.col("entityName").cast(pl.Utf8),
+        pl.col("entityCode").cast(pl.Utf8)
     )
 }
 
@@ -462,24 +437,7 @@ export const dataAsDF = async (
 
     const df = pl.concat(dfs)
 
-    // move this to its own method
-    const entityDF = (
-        await readSQLasDF(
-            `
-        SELECT
-            id AS entityId,
-            name AS entityName,
-            code AS entityCode
-        FROM entities WHERE id in (?)
-        `,
-            // Series.unique() is raising an error
-            [_.uniq(df.getColumn("entityId").toArray())]
-        )
-    ).select(
-        pl.col("entityId").cast(pl.Int32),
-        pl.col("entityName").cast(pl.Utf8),
-        pl.col("entityCode").cast(pl.Utf8)
-    )
+    const entityDF = await entitiesAsDF(df.getColumn("entityId").toArray())
 
     return df.join(entityDF, { on: "entityId" })
 }
